@@ -1,0 +1,238 @@
+from pysb import Model, Parameter, Compartment, Monomer, Parameter, Rule, Initial, Observable
+from pysb.simulator import ScipyOdeSimulator
+import numpy as np
+import cython
+import matplotlib.pyplot as plt
+import sympy as sp
+import pickle
+from collections import Counter
+import sys, os
+sys.setrecursionlimit(5000)
+from src.PySBtoLF_func import generate_graphs,adapt_graph_get_rhos
+from time import time
+
+start_time = time()  # Record the start time
+PA={
+    "vol_EC" : 1.0E-10, # In dm # OG: 1.0E-10
+    "surf_cell" : 1.11545244e-07, # OG: 1.4e-08 Mut_noSOCS: 1.4e-7
+    "vol_cell" : 3.0E-12, # In dm
+    "k_ILM_f" : 6.97E+05,
+    "k_ILM_b" : 3.07214605e+00, #4.34 # OG: 4.34e-02 Mut_noSOCS: 8.34e-02
+    "k_IL_RA_f" : 6.97E+05,
+    "k_IL_RA_b" : 5.94742574e-04, # OG: 1.42E-04 Mut_noSOCS: 1.42E-03
+    "k_IL_RB_f" : 6.97E+05,
+    "k_IL_RB_b" : 1394, # OG: 1394
+    "k_IL_RA_RB_f" : 6.97E+05,
+    "k_IL_RA_RB_b" : 1.32365577e+00, # OG: 243.95
+    "k_DEPHOS_R" : 0.000664996232095083
+}
+IC = {
+    "IL0":1e-8,
+    "RA0":750,
+    "RB0":1000
+    }
+
+Na=6.023e23
+Width_PM = 1e-7 # In dm
+# Initialize model
+Model()
+
+# Compartment
+Compartment(name='EC', parent=None, dimension=3, size=None)
+Compartment(name='Cell_PM', parent=EC, dimension=2, size=None)
+Compartment(name='Cell_CP', parent=Cell_PM, dimension=3, size=None)
+
+# Monomers
+Monomer('IL', ['bA1', 'bA2', 'bB1', 'bB2'])
+Monomer('RA', ['bA','kA'], {'kA': ['P','U']})
+Monomer('RB', ['bB']) 
+
+# Parameters (We put whatever number)
+Parameter('K_ILM_f', PA["k_ILM_f"]/(Na*PA["vol_EC"])*2)
+Parameter('K_ILM_b', PA["k_ILM_b"])
+
+Parameter('K_IL_RA_f', 2*PA["k_IL_RA_f"]/(Na*PA["vol_EC"]))
+Parameter('K_IL_RA_b', PA["k_IL_RA_b"])
+
+Parameter('K_IL_RA2_f', PA["k_IL_RA_f"]/(Na*PA["surf_cell"]*Width_PM))
+Parameter('K_IL_RA2_b', PA["k_IL_RA_b"])
+
+Parameter('K_IL_RA_RB_f', PA["k_IL_RA_RB_f"]/(Na*PA["surf_cell"]*Width_PM))
+Parameter('K_IL_RA_RB_b', PA["k_IL_RA_RB_b"])
+
+Parameter('K_IL_RA2_2_f', PA["k_IL_RA_f"]/(Na*PA["surf_cell"]*Width_PM)*(1/2))
+
+Parameter('K_IL_RA2_3_b', PA["k_IL_RA_b"]*(1/2))
+Parameter('K_IL_RA_RB_3_b', PA["k_IL_RA_RB_b"]*(1/2))
+
+Parameter('K_IL_RA2_4_b', PA["k_IL_RA_b"]*2)
+Parameter('K_IL_RA_RB_4_b', PA["k_IL_RA_RB_b"]*2)
+
+Parameter('K_DEPHOS_R', PA["k_DEPHOS_R"])
+
+# Complexes and reactions (dimerization of IL) Not added, since the edges regarding dimerization have to be added later (violates LF rules of elements being both in a node and an edge label)
+IL_free = IL(bA1=None, bA2=None, bB1=None, bB2=None)
+
+# Complexes and reactions (binding of receptors)
+IL_RA1p_alone = IL(bA1=1, bA2=None, bB1=None, bB2=None) % RA(bA=1,kA='P')
+Rule('IL_RA1p_alone_binding', IL_free + RA(bA=None,kA='P')| IL_RA1p_alone, *[K_IL_RA_f, K_IL_RA_b])
+IL_RA1_alone = IL(bA1=1, bA2=None, bB1=None, bB2=None) % RA(bA=1,kA='U')
+Rule('IL_RA1_alone_binding', IL_free + RA(bA=None,kA='U')| IL_RA1_alone, *[K_IL_RA_f, K_IL_RA_b])
+
+# Binding of second receptors from IL-RA1p complex
+IL_RA1p_RA2p = IL(bA1=1, bA2=2, bB1=None, bB2=None) % RA(bA=1,kA='P') % RA(bA=2,kA='P')
+Rule('IL_RA1p_noRA2p_binding_DB', IL_RA1p_alone + RA(bA=None,kA='P') | IL_RA1p_RA2p, *[K_IL_RA2_2_f, K_IL_RA2_b])
+IL_RA1p_RA2 = IL(bA1=1, bA2=2, bB1=None, bB2=None) % RA(bA=1,kA='P') % RA(bA=2,kA='U')
+Rule('IL_RA1p_noRA2_binding_DB', IL_RA1p_alone + RA(bA=None,kA='U') | IL_RA1p_RA2, *[K_IL_RA2_f, K_IL_RA2_b])
+IL_RA1p_RB1 = IL(bA1=1, bA2=None, bB1=2, bB2=None) % RA(bA=1,kA='P') % RB(bB=2)
+Rule('IL_RA1p_noRB1_binding_DB', IL_RA1p_alone + RB(bB=None) | IL_RA1p_RB1, *[K_IL_RA_RB_f, K_IL_RA_RB_b])
+
+# Binding of second receptors from IL-RA1 complex
+IL_RA1_RA2 = IL(bA1=1, bA2=2, bB1=None, bB2=None) % RA(bA=1,kA='U') % RA(bA=2,kA='U')
+Rule('IL_RA1_noRA2_binding_DB', IL_RA1_alone + RA(bA=None,kA='U') | IL_RA1_RA2, *[K_IL_RA2_2_f, K_IL_RA2_b])
+Rule('IL_noRA1p_RA2_binding_DB', IL_RA1_alone + RA(bA=None,kA='P') | IL_RA1p_RA2, *[K_IL_RA2_f, K_IL_RA2_b])
+IL_RA1p_RB1 = IL(bA1=1, bA2=None, bB1=2, bB2=None) % RA(bA=1,kA='P') % RB(bB=2)
+Rule('IL_RA1_noRB1_binding_DB', IL_RA1_alone + RB(bB=None) >> IL_RA1p_RB1, K_IL_RA_RB_f)
+
+
+# Binding of third receptors to from IL-RA1p-RA2p-RB1 complex
+IL_RA1p_RA2p_RB1 = IL(bA1=1, bA2=2, bB1=3, bB2=None) % RA(bA=1,kA='P') % RA(bA=2,kA='P') % RB(bB=3)
+Rule('IL_RA1p_RA2p_noRB1_binding_TB', IL_RA1p_RA2p + RB(bB=None) | IL_RA1p_RA2p_RB1, *[K_IL_RA_RB_f, K_IL_RA_RB_3_b])
+Rule('IL_RA1p_RA2_noRB1_binding_TB', IL_RA1p_RA2 + RB(bB=None) >> IL_RA1p_RA2p_RB1, K_IL_RA_RB_f)
+Rule('IL_RA1p_noRA2p_RB1_binding_TB', IL_RA1p_RB1 + RA(bA=None,kA='P') | IL_RA1p_RA2p_RB1, *[K_IL_RA2_f, K_IL_RA2_b])
+
+# Binding of third receptors to from IL-RA1p-RA2-RB1 complex
+IL_RA1p_RA2_RB1 = IL(bA1=1, bA2=2, bB1=3, bB2=None) % RA(bA=1,kA='P') % RA(bA=2,kA='U') % RB(bB=3)
+Rule('IL_RA1p_RA2_noRB1_binding_TB2', IL_RA1p_RA2 + RB(bB=None) | IL_RA1p_RA2_RB1, *[K_IL_RA_RB_f, K_IL_RA_RB_b])
+Rule('IL_RA1_RA2_noRB1_binding_TB', IL_RA1_RA2 + RB(bB=None) >> IL_RA1p_RA2_RB1, K_IL_RA_RB_f)
+Rule('IL_RA1p_noRA2_RB1_binding_TB', IL_RA1p_RB1 + RA(bA=None,kA='U') | IL_RA1p_RA2_RB1, *[K_IL_RA2_f, K_IL_RA2_b])
+
+# Binding of fourth receptor
+IL_RA1p_RA2p_RB1_RB2 = IL(bA1=1, bA2=2, bB1=3, bB2=4) % RA(bA=1,kA='P') % RA(bA=2,kA='P') % RB(bB=3) % RB(bB=4)
+Rule('IL_RA1p_RA2p_RB1_noRB2_binding_QB', IL_RA1p_RA2p_RB1 + RB(bB=None) | IL_RA1p_RA2p_RB1_RB2, *[K_IL_RA_RB_f, K_IL_RA_RB_4_b])
+Rule('IL_RA1p_RA2_RB1_noRB2_binding_QB', IL_RA1p_RA2_RB1 + RB(bB=None) >> IL_RA1p_RA2p_RB1_RB2, K_IL_RA_RB_f)
+
+# Dephosphorylation of receptors
+Rule('RA_DEPHOS', RA(bA=None, kA='P') >> RA(bA=None, kA='U'), K_DEPHOS_R)
+Rule('IL_RA1p_DEPHOS', IL_RA1p_alone >> IL_RA1_alone, K_DEPHOS_R)
+Rule('IL_RA1p_RA2p_DEPHOS', IL_RA1p_RA2p >> IL_RA1p_RA2, K_DEPHOS_R)
+Rule('IL_RA1p_RA2_DEPHOS', IL_RA1p_RA2 >> IL_RA1_RA2, K_DEPHOS_R)
+Rule('IL_RA1p_RA2p_RB1_DEPHOS', IL_RA1p_RA2p_RB1 >> IL_RA1p_RA2_RB1, K_DEPHOS_R)
+
+# Initial conditions
+Parameter('ILD_0', IC["IL0"]*Na*PA["vol_EC"]) # ILD_eq
+Initial(IL(bA1=None, bA2=None, bB1=None, bB2=None) ** EC, ILD_0)
+
+Parameter('RA_0',IC["RA0"])
+Parameter('RB_0',IC["RB0"])
+Initial(RA(bA=None, kA='U') ** Cell_PM, RA_0)
+Initial(RB(bB=None) ** Cell_PM, RB_0)
+
+# Simulation
+Observable('IL_free', IL(bA1=None, bA2=None, bB1=None, bB2=None) ** EC)
+Observable('RA_free', RA(bA=None,kA='U') ** Cell_PM)
+Observable('RAp_free', RA(bA=None,kA='P') ** Cell_PM)
+Observable('RB_free', RB(bB=None) ** Cell_PM)
+
+Observable('IL_RA1', IL(bA1=1, bA2=None, bB1=None, bB2=None) ** EC % RA(bA=1,kA='U') ** Cell_PM)
+Observable('IL_RA1p', IL(bA1=1, bA2=None, bB1=None, bB2=None) ** EC % RA(bA=1,kA='P') ** Cell_PM)
+
+Observable('IL_RA1p_RA2p', IL(bA1=1, bA2=2, bB1=None, bB2=None) ** EC % RA(bA=1,kA='P') ** Cell_PM % RA(bA=2,kA='P') ** Cell_PM)
+Observable('IL_RA1p_RA2', IL(bA1=1, bA2=2, bB1=None, bB2=None) ** EC % RA(bA=1,kA='P') ** Cell_PM % RA(bA=2,kA='U') ** Cell_PM)
+Observable('IL_RA1_RA2', IL(bA1=1, bA2=2, bB1=None, bB2=None) ** EC % RA(bA=1,kA='U') ** Cell_PM % RA(bA=2,kA='U') ** Cell_PM)
+Observable('IL_RA1p_RB1', IL(bA1=1, bA2=None, bB1=2, bB2=None) ** EC % RA(bA=1,kA='P') ** Cell_PM % RB(bB=2) ** Cell_PM)
+
+Observable('IL_RA1p_RA2p_RB1', IL(bA1=1, bA2=2, bB1=3, bB2=None) ** EC % RA(bA=1,kA='P') ** Cell_PM % RA(bA=2,kA='P') ** Cell_PM % RB(bB=3) ** Cell_PM)
+Observable('IL_RA1p_RA2_RB1', IL(bA1=1, bA2=2, bB1=3, bB2=None) ** EC % RA(bA=1,kA='P') ** Cell_PM % RA(bA=2,kA='U') ** Cell_PM % RB(bB=3) ** Cell_PM)
+
+Observable('IL_RA1p_RA2p_RB1_RB2', IL(bA1=1, bA2=2, bB1=3, bB2=4) ** EC % RA(bA=1,kA='P') ** Cell_PM % RA(bA=2,kA='P') ** Cell_PM % RB(bB=3) ** Cell_PM % RB(bB=4) ** Cell_PM)
+Observable('RAp', RA(kA='P') ** Cell_PM)
+
+t = np.arange(0,1*5,1/50)
+simulator = ScipyOdeSimulator(model, tspan=t, compiler='python', integrator = 'lsoda').run()
+
+# Inputs
+graph_gen_species = model.species[:3]+[model.species[8]] 
+graphs_system = generate_graphs(model, graph_gen_species) # Get graphs of the system (not fully adapted for rhos script)
+
+species_ggs_new = [sp.Symbol("IL10D"),sp.Symbol("RA"),sp.Symbol("RB"),sp.Symbol("RAp")] # Get new symbols for IC (graph generating species or monomers
+graph_final,new_index_edges,new_index_species,dict_repeated_weights_names = adapt_graph_get_rhos(model, graphs_system, species_ggs_new, sp.Symbol("__s0"), graph_gen_species) # Adapt graph for rhos script
+graph_final.append((1,'K_ILM_b',11))
+graph_final.append((11,'K_ILM_f-IL10M',1))
+new_index_species[10] = "ILM() ** EC"
+species_ggs_new = species_ggs_new + [sp.Symbol("IL10M")] # Add the monomer species
+
+print("Number of nodes: "+str(len(graph_final)))
+print("Number of edges: "+str(len(new_index_species)))
+
+with open("rhos_IL10_RAp_simpl.pkl", "rb") as file:
+   rho_list = pickle.load(file)
+    
+parameters_change = {
+    'K_ILM_f': "K_ILM_f*2",
+    'K_ILM_b': "K_ILM_b*2",
+    'K_IL_RA_f': "K_IL_RA_f*2",
+    'K_IL_RB_f': "K_IL_RB_f*2",
+    'K_IL_RA2_2_f': "K_IL_RA2_f*(1/2)",
+    'K_IL_RB2_2_f': "K_IL_RB2_f*(1/2)",
+    'K_IL_RA2_3_b': "K_IL_RA2_b*(1/2)",
+    'K_IL_RA_RB_3_b': "K_IL_RA_RB_b*(1/2)",
+    'K_IL_RA2_4_b': "K_IL_RA2_b*2",
+    'K_IL_RA_RB_4_b': "K_IL_RA_RB_b*2"
+}
+for i in range(0,len(rho_list)):
+    for param in parameters_change.keys():
+        rho_list[i] = rho_list[i].replace(param,parameters_change[param])
+
+rho_1 = sp.simplify(rho_list[0].split("=")[1]) # IL_free
+rho_2 = sp.simplify(rho_list[1].split("=")[1]) # ILRA1
+rho_3 = sp.simplify(rho_list[2].split("=")[1]) # ILRA1RA2
+rho_4 = sp.simplify(rho_list[3].split("=")[1]) # ILRA1pRB1
+rho_5 = sp.simplify(rho_list[4].split("=")[1]) # ILRA1p
+rho_6 = sp.simplify(rho_list[5].split("=")[1]) # ILRA1pRA2RB1
+rho_7 = sp.simplify(rho_list[6].split("=")[1]) # ILRA1pRA2
+rho_8 = sp.simplify(rho_list[7].split("=")[1]) # ILRA1pRA2pRB1RB2
+rho_9 = sp.simplify(rho_list[8].split("=")[1]) # ILRA1pRA2p
+rho_10 = sp.simplify(rho_list[9].split("=")[1]) # ILRA1pRA2pRB1
+rho_11 = sp.simplify(rho_list[10].split("=")[1]) # ILM_free
+rho_t = rho_1+rho_2+rho_3+rho_4+rho_5+rho_6+rho_7+rho_8+rho_9+rho_10+rho_11
+
+IL10M0 = sp.Symbol("IL10M0")
+RA0 = sp.Symbol("RA0")
+RB0 = sp.Symbol("RB0")
+IL10M = sp.Symbol("IL10M")
+RA = sp.Symbol("RA")
+RAp = sp.Symbol("RAp")
+RB = sp.Symbol("RB")
+
+print("Before generation of final expressions")
+
+RA_expr = RA0-RA-RAp-(rho_2+2*rho_3+rho_4+rho_5+2*rho_6+2*rho_7+2*rho_8+2*rho_9+2*rho_10)/rho_t*IL10M0
+RB_expr = RB0-RB-(rho_4+rho_6+2*rho_8+rho_10)/rho_t*IL10M0
+IL_expr = IL10M0-IL10M-(rho_1+rho_2+rho_3+rho_4+rho_5+rho_6+rho_7+rho_8+rho_9+rho_10)/rho_t*IL10M0
+RAp_expr = sp.simplify(str(model.odes[8]))
+RAp_expr = RAp_expr.subs(sp.Symbol("__s0"),rho_1/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s11"),rho_9/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s12"),rho_10/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s3"),rho_2/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s5"),rho_4/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s6"),rho_5/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s8"),RAp)
+RAp_expr = RAp_expr.subs(sp.Symbol("__s9"),rho_7/rho_t*IL10M0)
+RAp_expr = RAp_expr.subs(sp.Symbol("K_IL_RA2_2_f"),sp.Symbol("K_IL_RA2_f")*(1/2))
+RAp_expr = sp.simplify(RAp_expr)
+
+#ILRA1pRB1 = RA0-RA-RAp-(rho_2+2*rho_3+rho_5+2*rho_6+2*rho_7+2*rho_8+2*rho_9+2*rho_10)/rho_t*IL10M0
+ILRA1pRB1 = RB0-RB-(rho_6+2*rho_8+rho_10)/rho_t*IL10M0
+ILRA1p = RA0-RA-RAp-(rho_2+2*rho_3+rho_4+2*rho_6+2*rho_7+2*rho_8+2*rho_9+2*rho_10)/rho_t*IL10M0
+#ILRA1pRA2RB1 = (RA0-RA-RAp-(rho_2+2*rho_3+rho_4+rho_5+2*rho_7+2*rho_8+2*rho_9+2*rho_10)/rho_t*IL10M0)/2
+ILRA1pRA2RB1 = RB0-RB-(rho_4+2*rho_8+rho_10)/rho_t*IL10M0
+ILRA1pRA2 = (RA0-RA-RAp-(rho_2+2*rho_3+rho_4+rho_5+2*rho_6+2*rho_8+2*rho_9+2*rho_10)/rho_t*IL10M0)/2
+#ILRA1pRA2pRB1RB2 = (RA0-RA-RAp-(rho_2+2*rho_3+rho_4+rho_5+2*rho_6+2*rho_7+2*rho_9+2*rho_10)/rho_t*IL10M0)/2
+ILRA1pRA2pRB1RB2 = (RB0-RB-(rho_4+rho_6+rho_10)/rho_t*IL10M0)/2
+ILRA1pRA2p = (RA0-RA-RAp-(rho_2+2*rho_3+rho_4+rho_5+2*rho_6+2*rho_7+2*rho_8+2*rho_10)/rho_t*IL10M0)/2
+#ILRA1pRA2pRB1 = (RA0-RA-RAp-(rho_2+2*rho_3+rho_4+rho_5+2*rho_6+2*rho_7+2*rho_8+2*rho_9)/rho_t*IL10M0)/2
+ILRA1pRA2pRB1 = RB0-RB-(rho_4+rho_6+2*rho_8)/rho_t*IL10M0
+
+with open("SS_IL10_RAp_simpl.pkl", "wb") as file:
+    pickle.dump([str(RA_expr),str(RAp_expr),str(RB_expr),str(IL_expr),str(ILRA1pRB1),str(ILRA1p),str(ILRA1pRA2RB1),str(ILRA1pRA2),str(ILRA1pRA2pRB1RB2),str(ILRA1pRA2p),str(ILRA1pRA2pRB1)], file)

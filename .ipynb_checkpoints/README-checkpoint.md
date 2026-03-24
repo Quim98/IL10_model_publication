@@ -1,4 +1,4 @@
-# Mechanistic informed decoupling of inflammatory and anti-inflammatory IL-10 responses
+# Mechanistic pathway models reveal how IL-10 generates pleiotropic immune responses
 
 In conjunction with our [supplementary data](https://figshare.com/), this repository contains all the code to reproduce all of our analyses and simulations of our IL-10 signaling model. 
 
