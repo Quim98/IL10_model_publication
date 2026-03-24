@@ -1,0 +1,25 @@
+name: IL-10 model
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10.9
+  - numpy
+  - pandas
+  - scipy
+  - sympy
+  - scikit-learn
+  - scanpy
+  - decoupler
+  - glasbey
+  - anndata
+  - matplotlib
+  - statsmodels
+  - leidenalg
+  - seaborn
+  - gseapy
+  - pysb
+  - pyabc
+  - cython
+  - seaborn
+  - pydeseq2
