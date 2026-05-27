@@ -11,6 +11,7 @@ In conjunction with our [supplementary data](https://figshare.com/), this reposi
 We recommend installing mamba miniforge rather than conda in your corresponding OS: https://github.com/conda-forge/miniforge.
 ```shell
 mamba env create -f environment.yaml
+mamba activate IL10_model
 ```
 
 ## Issues
