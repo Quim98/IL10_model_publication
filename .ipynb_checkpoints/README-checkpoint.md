@@ -12,7 +12,7 @@ The study combines RNA-to-protein linear models, mechanistic ordinary differenti
 
 **Preprint:** https://doi.org/10.64898/2026.06.02.729479  
 **Code:** https://github.com/Quim98/IL10_model_publication  
-**Processed data and simulation outputs:** https://doi.org/10.5281/zenodo.19220929  
+**Processed data and simulation outputs:** https://doi.org/10.5281/zenodo.22257307
 **Raw proteomics:** PRIDE accession **PXD076154**
 
 ---
@@ -113,7 +113,7 @@ cd IL10_model_publication
 
 Download the archive associated with:
 
-**https://doi.org/10.5281/zenodo.19220929**
+**https://doi.org/10.5281/zenodo.22257307**
 
 Extract its contents directly into the repository root. After extraction, the repository should contain at least:
 
@@ -196,7 +196,7 @@ The associated plotting notebook is `Plots_dose_response.ipynb`.
 
 This notebook complements the dose-response plots by summarizing EC50 and amplitude prediction errors and produces the model-comparison panels in **Figure EV3F-G** together with the statistical/model-performance panels in **Appendix Figures S5 and S7**. This notebook also compares the performance in EC50 and Amplitude of the simplified linear framework steady-state solutions vs full ODE simulations **(Appendix Table S3)**.
 
-`Mech_models_performance.ipynb` our mechanistic Receptor Memory IL-10 signaling model and other regression-based model alternatives (Appendix Table S2).
+`Null_model_IL10.ipynb` our mechanistic Receptor Memory IL-10 signaling model and other regression-based model alternatives (Appendix Table S2).
 
 ### Downstream gene-regulation analyses
 
@@ -211,7 +211,7 @@ Inputs are primarily under `data/signaling/`, with model-simulated cell-type-spe
 The datasets and code associated with this study are distributed across the following resources:
 
 - **Code:** https://github.com/Quim98/IL10_model_publication
-- **Processed experimental data, model initial conditions, inference outputs, and simulations:** Zenodo, https://doi.org/10.5281/zenodo.19220929
+- **Processed experimental data, model initial conditions, inference outputs, and simulations:** Zenodo, https://doi.org/10.5281/zenodo.22257307
 - **Raw quantitative proteomics data:** PRIDE, accession **PXD076154**
 - External published datasets used in individual analyses are described and cited in the manuscript and within the corresponding analysis notebooks.
 
