@@ -1,17 +1,14 @@
-# Script predicting pSTAT1 and pSTAT3 among dimeric variants of IL-10, given certain error in the initial conditions. These results are used in the prediction of dose-response curves.
-# Default: Receptor Memory model -> To change the model to Baseline change the loaded function and load the correct parameter set (IL10_data_param_ABC_SMC_IL10_Control.csv)
-
+# In this script we change the phosphorylation rate and see its effect in an IL-10RB mutant
 
 import sys
 sys.path.append('/users/lserrano/qmarti/PhD_code/IL10') # Add the directory containing the script to sys.path
 import numpy as np
-# from src.models.IL10_ODE import model_function
 from src.models.IL10_RAp_ODE import model_function
 import pandas as pd
 from statistics import median
 from multiprocessing import Pool
 import matplotlib.pyplot as plt
-from src.simulate_func import set_simulation,simulate_parallel_ODE
+from src.simulate_func import set_simulation_cell_list,simulate_parallel_ODE
 from time import time
 
 start_time = time()
@@ -19,20 +16,16 @@ start_time = time()
 path_data = '/users/lserrano/qmarti/PhD_code'
 df_IC_data = pd.read_csv(path_data+'/IL10/data/expression/whole_dataset_IL10.tsv.gz', sep="\t", compression="gzip")
 df_bind = pd.read_csv(path_data+'/IL10/data/binding/IL10_data_param_ABC_SMC_IL10_RAp_ODE.csv')
-df_sim_data =  pd.read_csv('data/signaling/IL10_STAT_data_CD8_Gorby.tsv.gz', sep="\t", compression="gzip")
-
 
 # Create dataset of simulations
+# Create dataset of simulations
 num_sim = 12
-df_sim = set_simulation(df_bind, df_sim_data, df_IC_data, num_sim)
-
-# Add pSTAT1 simulation of CD4 and CD8 T cells
-
-df_Tcell = df_sim.loc[df_sim["Cell_type"].isin(["T4.Mean","T8.Mean"])]
-df_Tcell["STAT_type"] = "pSTAT1"
-df_Tcell["Plot"] = df_Tcell["Plot"].replace(df_Tcell["Plot"].drop_duplicates().values[0],12)
-df_Tcell["Plot"] = df_Tcell["Plot"].replace(df_Tcell["Plot"].drop_duplicates().values[1],13)
-df_sim = pd.concat([df_sim, df_Tcell], ignore_index=True)
+cell_list = ["ACH-000786","T8.Mean"]
+variant_list = ["WT","R5A11D"]
+STAT_list = ["pSTAT3","pSTAT1"]
+low_IL = 1e-13
+high_IL = 1e-7
+df_sim = set_simulation_cell_list(df_bind, df_IC_data, cell_list, variant_list, STAT_list, num_sim, low_IL, high_IL)
 df_sim["Plot OG"] = df_sim["Plot"]
 
 # IC per cell can have variability so we simulate over a normal distribution of IC for the receptors
@@ -47,8 +40,21 @@ for i in range(1,N):
 
 # Simulate
 num_cores = 24
-df_res = simulate_parallel_ODE(df_sim, num_cores, model_function)
-df_res.to_csv("simulations_fit_IL10_RAp_eIC_ODE.csv",index=False)
+df_res_normal = simulate_parallel_ODE(df_sim, num_cores, model_function)
+df_res_normal["Perturbation"] = "Normal"
+
+# More receptor dephosphorylation
+df_sim["k_DEPHOS_R"] = df_sim["k_DEPHOS_R"]*10
+df_res_more_phos = simulate_parallel_ODE(df_sim, num_cores, model_function)
+df_res_more_phos["Perturbation"] = "More Dephosphorylation"
+
+# Less receptor dephosphorylation
+df_sim["k_DEPHOS_R"] = df_sim["k_DEPHOS_R"]/100
+df_res_less_phos = simulate_parallel_ODE(df_sim, num_cores, model_function)
+df_res_less_phos["Perturbation"] = "Less Dephosphorylation"
+
+
+pd.concat([df_res_normal,df_res_more_phos,df_res_less_phos]).to_csv("../results/fit_param/model_perturbations/simulations_fit_IL10_RAp_eIC_ODE_phos.csv",index=False)
 
 end_time = time()  # Record the end time
 execution_time = end_time - start_time  # Calculate execution time

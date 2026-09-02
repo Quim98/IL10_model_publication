@@ -1,4 +1,4 @@
-# Script fine-tuning the IL-10RA dephosphorylation and IL-10RB binding dynamics among monomeric IL-10 variants
+# Script fine-tuning the IL-10RA dephosphorylation and IL-10RB binding dynamics among monomeric IL-10 variants (WT and R5A11M) for the Receptor Memory model
 
 # Imports
 import sys

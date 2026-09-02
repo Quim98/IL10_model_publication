@@ -1,0 +1,386 @@
+[1mdiff --git a/.ipynb_checkpoints/README-checkpoint.md b/.ipynb_checkpoints/README-checkpoint.md[m
+[1mindex d112ef9..8ab1277 100644[m
+[1m--- a/.ipynb_checkpoints/README-checkpoint.md[m
+[1m+++ b/.ipynb_checkpoints/README-checkpoint.md[m
+[36m@@ -11,6 +11,7 @@[m [mIn conjunction with our [supplementary data](https://figshare.com/), this reposi[m
+ We recommend installing mamba miniforge rather than conda in your corresponding OS: https://github.com/conda-forge/miniforge.[m
+ ```shell[m
+ mamba env create -f environment.yaml[m
+[32m+[m[32mmamba activate IL10_model[m
+ ```[m
+ [m
+ ## Issues[m
+[1mdiff --git a/.ipynb_checkpoints/packages-checkpoint.yml b/.ipynb_checkpoints/packages-checkpoint.yml[m
+[1mindex 9badf11..4fd6d19 100644[m
+[1m--- a/.ipynb_checkpoints/packages-checkpoint.yml[m
+[1m+++ b/.ipynb_checkpoints/packages-checkpoint.yml[m
+[36m@@ -1,4 +1,4 @@[m
+[31m-name: IL-10 model[m
+[32m+[m[32mname: IL10_model[m
+ channels:[m
+   - conda-forge[m
+   - bioconda[m
+[1mdiff --git a/Plots_genome_regulation.ipynb b/Plots_genome_regulation.ipynb[m
+[1mindex feaa4d0..843b5c1 100644[m
+[1m--- a/Plots_genome_regulation.ipynb[m
+[1m+++ b/Plots_genome_regulation.ipynb[m
+[36m@@ -54,11 +54,15 @@[m
+     "from pydeseq2.utils import load_example_data\n",[m
+     "import gseapy as gp\n",[m
+     "import matplotlib.colors as mcolor\n",[m
+[31m-    "from sklearn.metrics import mean_squared_error\n",[m
+[31m-    "from sklearn.metrics import r2_score\n",[m
+[32m+[m[32m    "from sklearn.metrics import mean_squared_error,r2_score\n",[m
+     "import sys\n",[m
+     "from sklearn.decomposition import PCA\n",[m
+[31m-    "from matplotlib.lines import Line2D"[m
+[32m+[m[32m    "from matplotlib.lines import Line2D\n",[m
+[32m+[m[32m    "from sklearn.cluster import KMeans\n",[m
+[32m+[m[32m    "from sklearn.preprocessing import StandardScaler\n",[m
+[32m+[m[32m    "from scipy.cluster.hierarchy import single, fcluster\n",[m
+[32m+[m[32m    "from scipy.spatial.distance import pdist\n",[m
+[32m+[m[32m    "from statsmodels.nonparametric.smoothers_lowess import lowess"[m
+    ][m
+   },[m
+   {[m
+[36m@@ -1143,6 +1147,318 @@[m
+     "plt.close(fig)"[m
+    ][m
+   },[m
+[32m+[m[32m  {[m
+[32m+[m[32m   "cell_type": "markdown",[m
+[32m+[m[32m   "id": "ec051f63-9bc7-494c-a1b8-d276b0634023",[m
+[32m+[m[32m   "metadata": {},[m
+[32m+[m[32m   "source": [[m
+[32m+[m[32m    "### Can we clusterize genes via correlations to see if we find the early, mid and late activation genes?"[m
+[32m+[m[32m   ][m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m   "cell_type": "code",[m
+[32m+[m[32m   "execution_count": null,[m
+[32m+[m[32m   "id": "f0573643-ffa3-4e29-9d8b-2b21dd6f3c5a",[m
+[32m+[m[32m   "metadata": {},[m
+[32m+[m[32m   "outputs": [],[m
+[32m+[m[32m   "source": [[m
+[32m+[m[32m    "# Get the dRNA from the genes where we can confidently get the pSTAT50\n",[m
+[32m+[m[32m    "df_diff_up = df_diff.loc[df_corr.loc[(df_corr[\"pvalue\"]<0.05)&(df_corr[\"SpearmanR\"]>0)&(df_corr[\"Mean\"]>=0)].index.to_list()]\n",[m
+[32m+[m[32m    "df_diff_down = df_diff.loc[df_corr.loc[(df_corr[\"pvalue\"]<0.05)&(df_corr[\"SpearmanR\"]<0)&(df_corr[\"Mean\"]<=0)].index.to_list()]\n",[m
+[32m+[m[32m    "df_diff_down = -df_diff_down.copy()\n",[m
+[32m+[m[32m    "df_diff_DEGs_pSTAT = pd.concat([df_diff_up,df_diff_down])\n",[m
+[32m+[m[32m    "df_diff_DEGs_pSTAT = df_diff_DEGs_pSTAT.loc[[gene for gene in df_log2.index if gene in df_diff_DEGs_pSTAT.index]]\n",[m
+[32m+[m[32m    "df_diff_DEGs_dict = df_diff.loc[[gene for gene in df_log1.index if gene in df_diff.index]]\n",[m
+[32m+[m[32m    "df_diff_DEGs_dict.loc[list(set(df_corr.loc[df_diff_DEGs_dict.index].loc[df_corr[\"SpearmanR\"]<0].index)&set(df_model.loc[df_diff_DEGs_dict.index].loc[df_model[\"L\"]<0].index))] = -df_diff_DEGs_dict.loc[list(set(df_corr.loc[df_diff_DEGs_dict.index].loc[df_corr[\"SpearmanR\"]<0].index)&set(df_model.loc[df_diff_DEGs_dict.index].loc[df_model[\"L\"]<0].index))].copy()\n",[m
+[32m+[m[32m    "df_diff_DEGs_comb = pd.concat([df_diff_DEGs_pSTAT,df_diff_DEGs_dict])\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "# Perform Hierarchical clustering\n",[m
+[32m+[m[32m    "dist = 1 - df_diff_comb2.T.corr(method='pearson').abs()      \n",[m
+[32m+[m[32m    "np.fill_diagonal(dist.values, 0)\n",[m
+[32m+[m[32m    "condensed_dist = squareform(dist.values, checks=False) # Convert square distance matrix to condensed form\n",[m
+[32m+[m[32m    "Z = linkage(condensed_dist, method=\"average\") # Hierarchical clustering\n",[m
+[32m+[m[32m    "n_clusters = 4\n",[m
+[32m+[m[32m    "labels = fcluster(Z, t=n_clusters, criterion=\"maxclust\") # Cut tree into clusters\n",[m
+[32m+[m[32m    "gene_clusters = pd.Series(labels, index=corr.index, name=\"cluster\")"[m
+[32m+[m[32m   ][m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m   "cell_type": "code",[m
+[32m+[m[32m   "execution_count": null,[m
+[32m+[m[32m   "id": "00d35c05-250c-4d90-a97d-2e306904d14b",[m
+[32m+[m[32m   "metadata": {},[m
+[32m+[m[32m   "outputs": [],[m
+[32m+[m[32m   "source": [[m
+[32m+[m[32m    "# Cluster mean response plot\n",[m
+[32m+[m[32m    "cluster_colors = {\n",[m
+[32m+[m[32m    "    1: \"#006400\",     # cluster 1 + 2\n",[m
+[32m+[m[32m    "    3: \"#00bfc4\",\n",[m
+[32m+[m[32m    "    4: \"#800080\",\n",[m
+[32m+[m[32m    "}\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "point_size = 100\n",[m
+[32m+[m[32m    "point_alpha = 0.33\n",[m
+[32m+[m[32m    "point_lw = 2\n",[m
+[32m+[m[32m    "line_width = 6\n",[m
+[32m+[m[32m    "lowess_frac = 0.8\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "fig, ax = plt.subplots(1, 1, figsize=(9, 8), dpi=400)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "x_raw = df_diff.loc[\"Result\"]\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "for cluster_id in [1, 3, 4]:\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    if cluster_id == 1:\n",[m
+[32m+[m[32m    "        genes = gene_clusters.loc[(gene_clusters == 1) | (gene_clusters == 2)].index\n",[m
+[32m+[m[32m    "        label = \"Clusters 1 & 2\"\n",[m
+[32m+[m[32m    "    else:\n",[m
+[32m+[m[32m    "        genes = gene_clusters.loc[gene_clusters == cluster_id].index\n",[m
+[32m+[m[32m    "        label = f\"Cluster {cluster_id}\"\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    y_raw = df_diff_comb2.loc[genes].mean()\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    mask = x_raw.notna() & y_raw.notna()\n",[m
+[32m+[m[32m    "    x = x_raw[mask].astype(float)\n",[m
+[32m+[m[32m    "    y = y_raw[mask].astype(float)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    smoothed = lowess(y, x, frac=lowess_frac, return_sorted=True)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    y_scatter = y.values - np.min(smoothed[:, 1])\n",[m
+[32m+[m[32m    "    y_scatter = y_scatter / np.max(y_scatter)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    y_smooth = smoothed[:, 1] - np.min(smoothed[:, 1])\n",[m
+[32m+[m[32m    "    y_smooth = y_smooth / np.max(y_smooth)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    ax.scatter(\n",[m
+[32m+[m[32m    "        x, y_scatter,\n",[m
+[32m+[m[32m    "        color=cluster_colors[cluster_id],\n",[m
+[32m+[m[32m    "        s=point_size,\n",[m
+[32m+[m[32m    "        alpha=point_alpha,\n",[m
+[32m+[m[32m    "        linewidth=point_lw,\n",[m
+[32m+[m[32m    "    )\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    ax.plot(\n",[m
+[32m+[m[32m    "        smoothed[:, 0], y_smooth,\n",[m
+[32m+[m[32m    "        color=cluster_colors[cluster_id],\n",[m
+[32m+[m[32m    "        linewidth=line_width,\n",[m
+[32m+[m[32m    "        label=label,\n",[m
+[32m+[m[32m    "    )\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.set_xlabel(\"pSTAT1+pSTAT3 Molecules\", fontsize=20)\n",[m
+[32m+[m[32m    "ax.set_ylabel(r'$\\overline{\\Delta \\mathrm{RNA}}$ (Normalized)', fontsize=20)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.spines[\"bottom\"].set_linewidth(4)\n",[m
+[32m+[m[32m    "ax.spines[\"left\"].set_linewidth(4)\n",[m
+[32m+[m[32m    "ax.spines[\"top\"].set_visible(False)\n",[m
+[32m+[m[32m    "ax.spines[\"right\"].set_visible(False)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.xaxis.set_tick_params(width=4, length=8)\n",[m
+[32m+[m[32m    "ax.yaxis.set_tick_params(width=4, length=8)\n",[m
+[32m+[m[32m    "ax.tick_params(axis=\"x\", labelsize=17)\n",[m
+[32m+[m[32m    "ax.tick_params(axis=\"y\", labelsize=17)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.set_xlim(-2.5, df_diff.loc[\"Result\"].max() + 10)\n",[m
+[32m+[m[32m    "ax.set_ylim(-0.15, 1.15)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.legend(fontsize=15, loc=\"best\")\n",[m
+[32m+[m[32m    "plt.savefig(\n",[m
+[32m+[m[32m    "    \"figures/immune_dict/mean_gene_response/alternative_methods/deseq2_norm/Plot_gene_clusters_both_lists.pdf\",\n",[m
+[32m+[m[32m    "    transparent=True,\n",[m
+[32m+[m[32m    "    bbox_inches=\"tight\",\n",[m
+[32m+[m[32m    ")\n",[m
+[32m+[m[32m    "plt.close()"[m
+[32m+[m[32m   ][m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m   "cell_type": "code",[m
+[32m+[m[32m   "execution_count": null,[m
+[32m+[m[32m   "id": "53b09f17-4e5e-49e4-a652-e23f265476ac",[m
+[32m+[m[32m   "metadata": {},[m
+[32m+[m[32m   "outputs": [],[m
+[32m+[m[32m   "source": [[m
+[32m+[m[32m    "box_colors = [\"#006400\", \"#006400\", \"#00bfc4\", \"#800080\"]  # customize\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "data = [\n",[m
+[32m+[m[32m    "    df_model.loc[gene_clusters[gene_clusters == i].index, \"x0\"].dropna().values\n",[m
+[32m+[m[32m    "    for i in [1, 2, 3, 4]\n",[m
+[32m+[m[32m    "]\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "fig, ax = plt.subplots(1, 1, figsize=(6, 7), dpi=400)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "bp = ax.boxplot(\n",[m
+[32m+[m[32m    "    data,\n",[m
+[32m+[m[32m    "    widths=0.6,\n",[m
+[32m+[m[32m    "    patch_artist=True,\n",[m
+[32m+[m[32m    "    boxprops=dict(edgecolor=\"black\", linewidth=1.5),\n",[m
+[32m+[m[32m    "    medianprops=dict(color=\"black\", linewidth=1.5),\n",[m
+[32m+[m[32m    "    whiskerprops=dict(color=\"black\", linewidth=1.5),\n",[m
+[32m+[m[32m    "    capprops=dict(color=\"black\", linewidth=1.5),\n",[m
+[32m+[m[32m    ")\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "for patch, color in zip(bp[\"boxes\"], box_colors):\n",[m
+[32m+[m[32m    "    patch.set_facecolor(color)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.spines[\"bottom\"].set_linewidth(4)\n",[m
+[32m+[m[32m    "ax.spines[\"left\"].set_linewidth(4)\n",[m
+[32m+[m[32m    "ax.spines[\"top\"].set_visible(False)\n",[m
+[32m+[m[32m    "ax.spines[\"right\"].set_visible(False)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.xaxis.set_tick_params(width=4, length=8)\n",[m
+[32m+[m[32m    "ax.yaxis.set_tick_params(width=4, length=8)\n",[m
+[32m+[m[32m    "ax.tick_params(axis=\"x\", labelsize=17)\n",[m
+[32m+[m[32m    "ax.tick_params(axis=\"y\", labelsize=17)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "ax.set_ylabel(\"pSTAT50\", fontsize=20)\n",[m
+[32m+[m[32m    "ax.set_xticklabels([\"Cluster 1\", \"Cluster 2\", \"Cluster 3\", \"Cluster 4\"], fontsize=17)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "plt.tight_layout()\n",[m
+[32m+[m[32m    "plt.savefig(\n",[m
+[32m+[m[32m    "    \"figures/immune_dict/mean_gene_response/alternative_methods/deseq2_norm/Plot_box_pSTAT50_clusters.pdf\",\n",[m
+[32m+[m[32m    "    transparent=True,\n",[m
+[32m+[m[32m    "    bbox_inches=\"tight\",\n",[m
+[32m+[m[32m    ")\n",[m
+[32m+[m[32m    "plt.close()"[m
+[32m+[m[32m   ][m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m   "cell_type": "code",[m
+[32m+[m[32m   "execution_count": null,[m
+[32m+[m[32m   "id": "b333cf98-9511-4fc5-8609-0ee0087675d1",[m
+[32m+[m[32m   "metadata": {},[m
+[32m+[m[32m   "outputs": [],[m
+[32m+[m[32m   "source": [[m
+[32m+[m[32m    "# Setup for ORA\n",[m
+[32m+[m[32m    "bm = gp.Biomart()\n",[m
+[32m+[m[32m    "m2h = bm.query(dataset='mmusculus_gene_ensembl',\n",[m
+[32m+[m[32m    "               attributes=['ensembl_gene_id','external_gene_name',\n",[m
+[32m+[m[32m    "                           'hsapiens_homolog_ensembl_gene',\n",[m
+[32m+[m[32m    "                           'hsapiens_homolog_associated_gene_name'])\n",[m
+[32m+[m[32m    "library = 'GO_Biological_Process_2025'\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "# Get ORA per gene group\n",[m
+[32m+[m[32m    "dict_genes = {\n",[m
+[32m+[m[32m    "    \"Low pSTAT50\": m2h.loc[m2h[\"external_gene_name\"].isin(df_model.loc[list(set(list(df_log1.index)+list(df_log2.index)))].loc[df_model[\"x0\"]<120].index.to_list()),\"hsapiens_homolog_associated_gene_name\"].dropna().to_list(),\n",[m
+[32m+[m[32m    "    \"Medium pSTAT50\": m2h.loc[m2h[\"external_gene_name\"].isin(df_model.loc[list(set(list(df_log1.index)+list(df_log2.index)))].loc[(df_model[\"x0\"]>120)&(df_model[\"x0\"]<180)].index.to_list()),\"hsapiens_homolog_associated_gene_name\"].dropna().to_list(),\n",[m
+[32m+[m[32m    "    \"High pSTAT50\":m2h.loc[m2h[\"external_gene_name\"].isin(df_model.loc[list(set(list(df_log1.index)+list(df_log2.index)))].loc[df_model[\"x0\"]>180].index.to_list()),\"hsapiens_homolog_associated_gene_name\"].dropna().to_list(),\n",[m
+[32m+[m[32m    "}\n",[m
+[32m+[m[32m    "dict_enrichr = {}\n",[m
+[32m+[m[32m    "for genes_group in dict_genes.keys():\n",[m
+[32m+[m[32m    "    dict_enrichr[genes_group] = gp.enrichr(gene_list=dict_genes[genes_group],\n",[m
+[32m+[m[32m    "                    gene_sets=library,\n",[m
+[32m+[m[32m    "                    organism='Human',\n",[m
+[32m+[m[32m    "                    background=m2h.loc[m2h[\"external_gene_name\"].isin(adata.var.index.values),\"hsapiens_homolog_associated_gene_name\"].dropna().to_list(),\n",[m
+[32m+[m[32m    "                    outdir=None,  # No file output\n",[m
+[32m+[m[32m    "                    cutoff=1.0).results"[m
+[32m+[m[32m   ][m
+[32m+[m[32m  },[m
+[32m+[m[32m  {[m
+[32m+[m[32m   "cell_type": "code",[m
+[32m+[m[32m   "execution_count": null,[m
+[32m+[m[32m   "id": "91dd814f-b8cd-4aaf-b56b-81194943bc9b",[m
+[32m+[m[32m   "metadata": {},[m
+[32m+[m[32m   "outputs": [],[m
+[32m+[m[32m   "source": [[m
+[32m+[m[32m    "enrich_terms_plot = pd.DataFrame()\n",[m
+[32m+[m[32m    "terms_top_3groups = list(set(dict_enrichr[\"Low pSTAT50\"].loc[dict_enrichr[\"Low pSTAT50\"][\"Adjusted P-value\"]<0.05].sort_values(by=\"Combined Score\",ascending=False).head(5)[\"Term\"].to_list() + dict_enrichr[\"Medium pSTAT50\"].loc[dict_enrichr[\"Medium pSTAT50\"][\"Adjusted P-value\"]<0.05].sort_values(by=\"Combined Score\",ascending=False).head(5)[\"Term\"].to_list() + dict_enrichr[\"High pSTAT50\"].loc[dict_enrichr[\"High pSTAT50\"][\"Adjusted P-value\"]<0.05].sort_values(by=\"Combined Score\",ascending=False).head(5)[\"Term\"].to_list()))\n",[m
+[32m+[m[32m    "for subset in dict_enrichr.keys():\n",[m
+[32m+[m[32m    "    enrich_terms = dict_enrichr[subset].loc[dict_enrichr[subset][\"Term\"].isin(terms_top_3groups)]\n",[m
+[32m+[m[32m    "    lib_dict = gp.get_library(name=library, organism=\"Human\")\n",[m
+[32m+[m[32m    "    query_u_bckgr = set(dict_genes[subset])&set(m2h.loc[m2h[\"external_gene_name\"].isin(adata.var.index.values),\"hsapiens_homolog_associated_gene_name\"].dropna().to_list())\n",[m
+[32m+[m[32m    "    enrich_terms[\"Overlap\"] = np.array([len(set(lib_dict[term])&query_u_bckgr) for term in enrich_terms[\"Term\"]])/np.array([len(set(lib_dict[term])&set(m2h.loc[m2h[\"external_gene_name\"].isin(adata.var.index.values),\"hsapiens_homolog_associated_gene_name\"].dropna().to_list())) for term in enrich_terms[\"Term\"]])\n",[m
+[32m+[m[32m    "    enrich_terms.index = enrich_terms[\"Term\"]\n",[m
+[32m+[m[32m    "    enrich_terms = enrich_terms[[\"Combined Score\",\"Overlap\"]]\n",[m
+[32m+[m[32m    "    enrich_terms.columns = [\"Combined Score__\"+subset,\"Overlap__\"+subset]\n",[m
+[32m+[m[32m    "    enrich_terms_plot = pd.concat([enrich_terms_plot,enrich_terms],axis=1, join='outer')\n",[m
+[32m+[m[32m    "enrich_terms_plot = enrich_terms_plot.replace(np.nan,0)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "colors = {\n",[m
+[32m+[m[32m    "    \"Low pSTAT50\": \"#006400\",\n",[m
+[32m+[m[32m    "    \"Medium pSTAT50\": \"#00bfc4\",\n",[m
+[32m+[m[32m    "    \"High pSTAT50\": \"#800080\",\n",[m
+[32m+[m[32m    "}\n",[m
+[32m+[m[32m    "labels = {\n",[m
+[32m+[m[32m    "    \"Low pSTAT50\": \"Low pSTAT thres. (120<pSTAT50)\",\n",[m
+[32m+[m[32m    "    \"Medium pSTAT50\": \"Medium pSTAT thres. (120<pSTAT50<180)\",\n",[m
+[32m+[m[32m    "    \"High pSTAT50\": \"High pSTAT thres. (pSTAT50>180)\",\n",[m
+[32m+[m[32m    "}\n",[m
+[32m+[m[32m    "comparisons = [\n",[m
+[32m+[m[32m    "    col.replace(\"Combined Score__\", \"\")\n",[m
+[32m+[m[32m    "    for col in enrich_terms_plot.columns\n",[m
+[32m+[m[32m    "    if col.startswith(\"Combined Score__\")\n",[m
+[32m+[m[32m    "]\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "y = np.arange(len(enrich_terms_plot))\n",[m
+[32m+[m[32m    "n = len(comparisons)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "# Make bars thicker and rows a bit more spacious\n",[m
+[32m+[m[32m    "group_height = 0.90\n",[m
+[32m+[m[32m    "h = group_height / n\n",[m
+[32m+[m[32m    "offsets = np.linspace(group_height / 2 - h / 2, -group_height / 2 + h / 2, n)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "fig, ax = plt.subplots(\n",[m
+[32m+[m[32m    "    1, 1,\n",[m
+[32m+[m[32m    "    figsize=(8, 0.65 * len(enrich_terms_plot) + 1)\n",[m
+[32m+[m[32m    ")\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "score_cols = []\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "for comp, offset in zip(comparisons, offsets):\n",[m
+[32m+[m[32m    "    score_col = f\"Combined Score__{comp}\"\n",[m
+[32m+[m[32m    "    overlap_col = f\"Overlap__{comp}\"\n",[m
+[32m+[m[32m    "    score_cols.append(score_col)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    if overlap_col not in enrich_terms_plot.columns:\n",[m
+[32m+[m[32m    "        raise ValueError(f\"Missing overlap column: {overlap_col}\")\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    ax.barh(\n",[m
+[32m+[m[32m    "        y + offset,\n",[m
+[32m+[m[32m    "        enrich_terms_plot[score_col],\n",[m
+[32m+[m[32m    "        height=h,\n",[m
+[32m+[m[32m    "        label=labels.get(comp, comp),\n",[m
+[32m+[m[32m    "        color=colors.get(comp, None),\n",[m
+[32m+[m[32m    "        edgecolor=\"black\",     # black border around bars\n",[m
+[32m+[m[32m    "        linewidth=1.5\n",[m
+[32m+[m[32m    "    )\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "# Set x-limit before writing text so text offset scales properly\n",[m
+[32m+[m[32m    "xmax = enrich_terms_plot[score_cols].max().max()\n",[m
+[32m+[m[32m    "text_offset = xmax * 0.015\n",[m
+[32m+[m[32m    "ax.set_xlim(0, xmax * 1.22)\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "# Add overlap labels\n",[m
+[32m+[m[32m    "for comp, offset in zip(comparisons, offsets):\n",[m
+[32m+[m[32m    "    score_col = f\"Combined Score__{comp}\"\n",[m
+[32m+[m[32m    "    overlap_col = f\"Overlap__{comp}\"\n",[m
+[32m+[m[32m    "\n",[m
+[32m+[m[32m    "    for i, (score, overlap) in enumerate(\n",[m
+[32m+[m[32m    "        zip(enrich_terms_plot[score_col], enrich_terms_plot[overlap_col])\n",[m
+[32m+[m[32m    "    ):\n",[m
+[32m+[m[32m    "        ax.text(\n",[m
+[32m+[m[32m    "            score + text_offset,\n",[m
+[32m+[m[32m    "            y[i] + offset,\n",[m
+[32m+[m[32m    "            f\"{overlap:.2f}\",\n",[m
+[32m+[m[32m    "            va=\"center\",\n",[m
+[32m+[m[32m    "            ha=\"left\",\n",[m
+[32m+[m[32m    "            fontsize=10,\n",[m
+[32m+[m[32m    "            bbox=dict(facecolor=\"none\", edgecolor=\"none\", pad=0.2)  # prevents visual overlap\n",[m
+[32m+[m[32m    "        )\n",[m
+[32m+[m[32m    "ax.set_yticks(y)\n",[m
+[32m+[m[32m    "ax.set_yticklabels(enrich_terms_plot.index, fontsize=14)\n",[m
+[32m+[m[32m    "ax.set_xlabel(\"Combined Score\", fontsize=14)\n",[m
+[32m+[m[32m    "ax.spines[\"bottom\"].set_linewidth(4)\n",[m
+[32m+[m[32m    "ax.spines[\"left\"].set_linewidth(4)\n",[m
+[32m+[m[32m    "ax.spines[\"top\"].set_visible(False)\n",[m
+[32m+[m[32m    "ax.spines[\"right\"].set_visible(False)\n",[m
+[32m+[m[32m    "ax.xaxis.set_tick_params(width=4, length=7)\n",[m
+[32m+[m[32m    "ax.yaxis.set_tick_params(width=4, length=7)\n",[m
+[32m+[m[32m    "ax.tick_params(axis=\"x\", labelsize=14)\n",[m
+[32m+[m[32m    "ax.tick_params(axis=\"y\", labelsize=14)\n",[m
+[32m+[m[32m    "ax.legend(fontsize=12)\n",[m
+[32m+[m[32m    "plt.tight_layout()\n",[m
+[32m+[m[32m    "plt.savefig('figures/immune_dict/mean_gene_response/alternative_methods/deseq2_norm/GSEA/enrichr_results_pSTAT50_comparison.pdf', transparent=True, format=\"pdf\", bbox_inches=\"tight\")\n",[m
+[32m+[m[32m    "plt.close()"[m
+[32m+[m[32m   ][m
+[32m+[m[32m  },[m
+   {[m
+    "cell_type": "markdown",[m
+    "id": "74e0b862-4455-4d39-851a-eeffda9d34fe",[m
+[1mdiff --git a/README.md b/README.md[m
+[1mindex d112ef9..8ab1277 100644[m
+[1m--- a/README.md[m
+[1m+++ b/README.md[m
+[36m@@ -11,6 +11,7 @@[m [mIn conjunction with our [supplementary data](https://figshare.com/), this reposi[m
+ We recommend installing mamba miniforge rather than conda in your corresponding OS: https://github.com/conda-forge/miniforge.[m
+ ```shell[m
+ mamba env create -f environment.yaml[m
+[32m+[m[32mmamba activate IL10_model[m
+ ```[m
+ [m
+ ## Issues[m
+[1mdiff --git a/packages.yml b/packages.yml[m
+[1mindex 9badf11..4fd6d19 100644[m
+[1m--- a/packages.yml[m
+[1m+++ b/packages.yml[m
+[36m@@ -1,4 +1,4 @@[m
+[31m-name: IL-10 model[m
+[32m+[m[32mname: IL10_model[m
+ channels:[m
+   - conda-forge[m
+   - bioconda[m

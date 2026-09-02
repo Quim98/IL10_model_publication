@@ -1,4 +1,5 @@
-# Script performing slopiness analysis to rank the model’s parameters by their effect on its prediction.
+# Script performing slopiness analysis to rank the model’s parameters by their effect on its prediction (Figure EV2).
+# Default: Receptor Memory model -> To change the model change the loaded function and the parameters to perform the analysis.
 
 import numpy as np
 #from src.models.IL10_seq import model_function

@@ -1,17 +1,12 @@
-# Script predicting pSTAT1 and pSTAT3 among dimeric variants of IL-10, given certain error in the initial conditions. These results are used in the prediction of dose-response curves.
-# Default: Receptor Memory model -> To change the model to Baseline change the loaded function and load the correct parameter set (IL10_data_param_ABC_SMC_IL10_Control.csv)
-
-
 import sys
 sys.path.append('/users/lserrano/qmarti/PhD_code/IL10') # Add the directory containing the script to sys.path
 import numpy as np
-# from src.models.IL10_ODE import model_function
 from src.models.IL10_RAp_ODE import model_function
 import pandas as pd
 from statistics import median
 from multiprocessing import Pool
 import matplotlib.pyplot as plt
-from src.simulate_func import set_simulation,simulate_parallel_ODE
+from src.simulate_func import set_simulation_cell_list,simulate_parallel_ODE
 from time import time
 
 start_time = time()
@@ -19,20 +14,26 @@ start_time = time()
 path_data = '/users/lserrano/qmarti/PhD_code'
 df_IC_data = pd.read_csv(path_data+'/IL10/data/expression/whole_dataset_IL10.tsv.gz', sep="\t", compression="gzip")
 df_bind = pd.read_csv(path_data+'/IL10/data/binding/IL10_data_param_ABC_SMC_IL10_RAp_ODE.csv')
-df_sim_data =  pd.read_csv('data/signaling/IL10_STAT_data_CD8_Gorby.tsv.gz', sep="\t", compression="gzip")
 
+# Get mutant with x10 lower unbinding rate
+df_bind = df_bind.loc[df_bind["Variant"].isin(["WT"])]
+df_bind.loc[len(df_bind)] = df_bind.loc[df_bind["Variant"]=="WT"].values[0]
+df_bind.loc[len(df_bind)-1,"Variant"] = "MutRB_koff"
+df_bind.loc[df_bind["Variant"]=="MutRB_koff","k_IL_RB_b"] = df_bind.loc[df_bind["Variant"]=="MutRB_koff","k_IL_RB_b"]/10
+df_bind.loc[df_bind["Variant"]=="MutRB_koff","k_IL_RA_RB_b"] = df_bind.loc[df_bind["Variant"]=="MutRB_koff","k_IL_RA_RB_b"]/10
+df_bind.loc[len(df_bind)] = df_bind.loc[df_bind["Variant"]=="WT"].values[0]
+df_bind.loc[len(df_bind)-1,"Variant"] = "MutRB_kon"
+df_bind.loc[df_bind["Variant"]=="MutRB_kon","k_IL_RB_f"] = df_bind.loc[df_bind["Variant"]=="MutRB_kon","k_IL_RB_f"]*10
+df_bind.loc[df_bind["Variant"]=="MutRB_kon","k_IL_RA_RB_f"] = df_bind.loc[df_bind["Variant"]=="MutRB_kon","k_IL_RA_RB_f"]*10
 
 # Create dataset of simulations
 num_sim = 12
-df_sim = set_simulation(df_bind, df_sim_data, df_IC_data, num_sim)
-
-# Add pSTAT1 simulation of CD4 and CD8 T cells
-
-df_Tcell = df_sim.loc[df_sim["Cell_type"].isin(["T4.Mean","T8.Mean"])]
-df_Tcell["STAT_type"] = "pSTAT1"
-df_Tcell["Plot"] = df_Tcell["Plot"].replace(df_Tcell["Plot"].drop_duplicates().values[0],12)
-df_Tcell["Plot"] = df_Tcell["Plot"].replace(df_Tcell["Plot"].drop_duplicates().values[1],13)
-df_sim = pd.concat([df_sim, df_Tcell], ignore_index=True)
+cell_list = ["ACH-000786","T8.Mean"]
+variant_list = ["WT","MutRB_koff","MutRB_kon"]
+STAT_list = ["pSTAT3","pSTAT1"]
+low_IL = 1e-13
+high_IL = 1e-7
+df_sim = set_simulation_cell_list(df_bind, df_IC_data, cell_list, variant_list, STAT_list, num_sim, low_IL, high_IL)
 df_sim["Plot OG"] = df_sim["Plot"]
 
 # IC per cell can have variability so we simulate over a normal distribution of IC for the receptors
@@ -45,10 +46,10 @@ for i in range(1,N):
     df_sim_e["Plot"] = (df_sim_copy["Plot"] + df_sim_copy["Plot"].max()*i).astype(int)
     df_sim = pd.concat([df_sim, df_sim_e], ignore_index=True)
 
-# Simulate
+# Simulate mutation affects koff
 num_cores = 24
 df_res = simulate_parallel_ODE(df_sim, num_cores, model_function)
-df_res.to_csv("simulations_fit_IL10_RAp_eIC_ODE.csv",index=False)
+df_res.to_csv("results/fit_param/reviews/simulations_fit_IL10_RAp_eIC_ODE_RB_Kon_off.csv",index=False)
 
 end_time = time()  # Record the end time
 execution_time = end_time - start_time  # Calculate execution time

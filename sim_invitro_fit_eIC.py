@@ -1,4 +1,5 @@
 # Script predicting pSTAT1 and pSTAT3 among dimeric variants of IL-10, given certain error in the initial conditions. Here we used the steady-state aproximations to compare to the full ODE simulations.
+# Default: Receptor Memory model -> To change the model to Baseline change the loaded function and load the correct parameter set (IL10_data_param_ABC_SMC_IL10_Control.csv)
 
 import numpy as np
 # from src.models.IL10_seq import model_function

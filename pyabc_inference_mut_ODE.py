@@ -1,4 +1,4 @@
-# Script infering the IL-10RB binding dynamics among dimeric IL-10 variants
+# Script infering the IL-10RB binding dynamics among dimeric IL-10 variants (Super-10 and R5A11D) for the Receptor Memory model
 
 # Imports
 import sys

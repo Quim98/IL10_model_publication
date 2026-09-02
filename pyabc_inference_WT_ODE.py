@@ -1,4 +1,4 @@
-# Script infering the IL-10 dissociation, IL-10RA dephosphorylation and IL-10RA and IL-10RB binding dynamics among dimeric WT IL-10
+# Script infering the IL-10 dissociation, IL-10RA dephosphorylation and IL-10RA and IL-10RB binding dynamics among dimeric WT IL-10 for the Receptor Memory model
 
 # Imports
 import sys
